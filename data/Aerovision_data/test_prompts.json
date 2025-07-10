@@ -1,0 +1,5 @@
+{
+"0.png" : "Smooth, attached laminar airflow over a CLARKZ airfoil at 0 degrees angle of attack",
+"1.png" : "Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a CLARKZ airfoil at a high 17.5-degree angle of attack",
+"2.png" : "Deep aerodynamic stall showing flow fully separated from the top surface, forming a wide and disordered wake behind a CLARKZ airfoil at a very high 35-degree angle of attack"
+}

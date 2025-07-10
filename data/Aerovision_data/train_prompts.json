@@ -1,0 +1,15 @@
+{
+"0.png" : "Smooth, attached laminar airflow over a NACA 0015 airfoil at 0 degrees angle of attack",
+"1.png" : "Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 0015 airfoil at a high 17.5-degree angle of attack",
+"2.png" : "Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NACA 0015 airfoil at a high 35-degree angle of attack",
+"3.png" : "Smooth, attached laminar airflow over a NACA 65415 airfoil at 0 degrees angle of attack",
+"4.png" : "Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 65415 airfoil at a high 17.5-degree angle of attack",
+"5.png" : "Smooth, attached laminar airflow over a NACA 60006 airfoil at 0 degrees angle of attack",
+"6.png" : "Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 60006 airfoil at a high 17.5-degree angle of attack",
+"7.png" : "Smooth, attached laminar airflow over a NACA 23021 airfoil at 0 degrees angle of attack",
+"8.png" : "Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 23021 airfoil at a high 17.5-degree angle of attack",
+"9.png" : "Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NACA 23021 airfoil at a high 35-degree angle of attack",
+"10.png" : "Smooth, attached laminar airflow over a NACA 23015 airfoil at 0 degrees angle of attack",
+"11.png" : "Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 23015 airfoil at a high 17.5-degree angle of attack",
+"12.png" : "Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NACA 23015 airfoil at a high 35-degree angle of attack"
+}
