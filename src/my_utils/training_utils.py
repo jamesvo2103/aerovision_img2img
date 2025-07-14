@@ -361,49 +361,58 @@ class UnpairedDataset(torch.utils.data.Dataset):
         """
         return len(self.l_imgs_src) + len(self.l_imgs_tgt)
 
-    def __getitem__(self, index):
+    def __getitem__(self, idx):
         """
-        Fetches a pair of unaligned images from the source and target domains along with their 
-        corresponding tokenized captions.
-
-        For the source domain, if the requested index is within the range of available images,
-        the specific image at that index is chosen. If the index exceeds the number of source
-        images, a random source image is selected. For the target domain,
-        an image is always randomly selected, irrespective of the index, to maintain the 
-        unpaired nature of the dataset.
-
-        Both images are preprocessed according to the specified image transformation `T`, and normalized.
-        The fixed captions for both domains
-        are included along with their tokenized forms.
-
-        Parameters:
-        - index (int): The index of the source image to retrieve.
-
-        Returns:
-        dict: A dictionary containing processed data for a single training example, with the following keys:
-            - "pixel_values_src": The processed source image
-            - "pixel_values_tgt": The processed target image
-            - "caption_src": The fixed caption of the source domain.
-            - "caption_tgt": The fixed caption of the target domain.
-            - "input_ids_src": The source domain's fixed caption tokenized.
-            - "input_ids_tgt": The target domain's fixed caption tokenized.
+        Retrieves and augments a dataset item. This version includes on-the-fly
+        data augmentation to amplify the dataset.
         """
-        if index < len(self.l_imgs_src):
-            img_path_src = self.l_imgs_src[index]
-        else:
-            img_path_src = random.choice(self.l_imgs_src)
-        img_path_tgt = random.choice(self.l_imgs_tgt)
-        img_pil_src = Image.open(img_path_src).convert("RGB")
-        img_pil_tgt = Image.open(img_path_tgt).convert("RGB")
-        img_t_src = F.to_tensor(self.T(img_pil_src))
-        img_t_tgt = F.to_tensor(self.T(img_pil_tgt))
-        img_t_src = F.normalize(img_t_src, mean=[0.5], std=[0.5])
-        img_t_tgt = F.normalize(img_t_tgt, mean=[0.5], std=[0.5])
+        img_name = self.img_names[idx]
+        
+        # Load images and ensure they are in RGB format
+        input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
+        output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
+        
+        caption = self.captions[img_name]
+
+        # --- START: Data Augmentation and Pre-processing ---
+
+        # 1. Apply geometric transforms that MUST be identical for the pair.
+        
+        # Resize images to 512x512
+        resize = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
+        input_img = resize(input_img)
+        output_img = resize(output_img)
+
+        # Apply a random horizontal flip to both images with 50% probability
+        if random.random() > 0.5:
+            input_img = F.hflip(input_img)
+            output_img = F.hflip(output_img)
+            
+        # 2. Convert images to PyTorch Tensors
+        # This scales pixel values to the [0.0, 1.0] range.
+        input_t = F.to_tensor(input_img)
+        output_t = F.to_tensor(output_img)
+
+        # 3. Apply color augmentation ONLY to the input image.
+        # We don't want to change the colors of the target airflow visualization.
+        color_jitter = transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2)
+        input_t = color_jitter(input_t)
+
+        # 4. Normalize the output image tensor to the [-1.0, 1.0] range.
+        # The input tensor remains in the [0.0, 1.0] range as expected by the model.
+        output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
+
+        # --- END: Data Augmentation and Pre-processing ---
+
+        # Tokenize the caption
+        input_ids = self.tokenizer(
+            caption, max_length=self.tokenizer.model_max_length,
+            padding="max_length", truncation=True, return_tensors="pt"
+        ).input_ids
+
         return {
-            "pixel_values_src": img_t_src,
-            "pixel_values_tgt": img_t_tgt,
-            "caption_src": self.fixed_caption_src,
-            "caption_tgt": self.fixed_caption_tgt,
-            "input_ids_src": self.input_ids_src,
-            "input_ids_tgt": self.input_ids_tgt,
+            "output_pixel_values": output_t,
+            "conditioning_pixel_values": input_t,
+            "caption": caption,
+            "input_ids": input_ids,
         }
