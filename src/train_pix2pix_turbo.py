@@ -103,9 +103,11 @@ def main(args):
         num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles, power=args.lr_power,)
 
-    optimizer_disc = torch.optim.AdamW(net_disc.parameters(), lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,)
+    disc_lr = args.learning_rate / 4.0
+    optimizer_disc = torch.optim.AdamW(net_disc.parameters(), lr=disc_lr,
+    betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
+    eps=args.adam_epsilon,)
+    
     lr_scheduler_disc = get_scheduler(args.lr_scheduler, optimizer=optimizer_disc,
             num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
             num_training_steps=args.max_train_steps * accelerator.num_processes,
