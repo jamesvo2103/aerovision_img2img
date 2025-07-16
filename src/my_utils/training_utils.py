@@ -1,3 +1,4 @@
+
 import os
 import random
 import argparse
@@ -218,63 +219,83 @@ def build_transform(image_prep):
 class PairedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_folder, split, image_prep, tokenizer):
         """
-        Initializes the dataset. The 'image_prep' argument is no longer used
-        as augmentations are handled directly in __getitem__.
+        Itialize the paired dataset object for loading and transforming paired data samples
+        from specified dataset folders.
+
+        This constructor sets up the paths to input and output folders based on the specified 'split',
+        loads the captions (or prompts) for the input images, and prepares the transformations and
+        tokenizer to be applied on the data.
+
+        Parameters:
+        - dataset_folder (str): The root folder containing the dataset, expected to include
+                                sub-folders for different splits (e.g., 'train_A', 'train_B').
+        - split (str): The dataset split to use ('train' or 'test'), used to select the appropriate
+                       sub-folders and caption files within the dataset folder.
+        - image_prep (str): The image preprocessing transformation to apply to each image.
+        - tokenizer: The tokenizer used for tokenizing the captions (or prompts).
         """
         super().__init__()
         if split == "train":
             self.input_folder = os.path.join(dataset_folder, "train_A")
             self.output_folder = os.path.join(dataset_folder, "train_B")
-            captions_path = os.path.join(dataset_folder, "train_prompts.json")
+            captions = os.path.join(dataset_folder, "train_prompts.json")
         elif split == "test":
             self.input_folder = os.path.join(dataset_folder, "test_A")
             self.output_folder = os.path.join(dataset_folder, "test_B")
-            captions_path = os.path.join(dataset_folder, "test_prompts.json")
-        
-        with open(captions_path, "r") as f:
+            captions = os.path.join(dataset_folder, "test_prompts.json")
+        with open(captions, "r") as f:
             self.captions = json.load(f)
-        
         self.img_names = list(self.captions.keys())
+        self.T = build_transform(image_prep)
         self.tokenizer = tokenizer
 
-        # Define your augmentation pipeline here
-        # These will be applied randomly to each image during training
-        self.augment_transforms = transforms.Compose([
-            transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), scale=(0.95, 1.05)),
-            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
-        ])
-
     def __len__(self):
-        return len(self.img_names)
+        """
+        Returns:
+        int: The total number of items in the dataset.
+        """
+        return len(self.captions)
 
     def __getitem__(self, idx):
+        """
+        Retrieves a dataset item given its index. Each item consists of an input image, 
+        its corresponding output image, the captions associated with the input image, 
+        and the tokenized form of this caption.
+
+        This method performs the necessary preprocessing on both the input and output images, 
+        including scaling and normalization, as well as tokenizing the caption using a provided tokenizer.
+
+        Parameters:
+        - idx (int): The index of the item to retrieve.
+
+        Returns:
+        dict: A dictionary containing the following key-value pairs:
+            - "output_pixel_values": a tensor of the preprocessed output image with pixel values 
+            scaled to [-1, 1].
+            - "conditioning_pixel_values": a tensor of the preprocessed input image with pixel values 
+            scaled to [0, 1].
+            - "caption": the text caption.
+            - "input_ids": a tensor of the tokenized caption.
+
+        Note:
+        The actual preprocessing steps (scaling and normalization) for images are defined externally 
+        and passed to this class through the `image_prep` parameter during initialization. The 
+        tokenization process relies on the `tokenizer` also provided at initialization, which 
+        should be compatible with the models intended to be used with this dataset.
+        """
         img_name = self.img_names[idx]
-        caption = self.captions[img_name]
-        
-        # Load images
         input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
         output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
+        caption = self.captions[img_name]
 
-        # --- Data Augmentation and Pre-processing ---
-
-        # Apply geometric transforms that MUST be identical for the pair.
-        # We achieve this by setting a random seed before transforming each image.
-        seed = torch.seed()
-        
-        torch.manual_seed(seed)
-        input_img = self.augment_transforms(input_img)
-        
-        torch.manual_seed(seed)
-        output_img = self.augment_transforms(output_img)
-            
-        # Convert images to PyTorch Tensors
-        input_t = F.to_tensor(input_img)
-        output_t = F.to_tensor(output_img)
-
-        # Normalize the output image tensor to the [-1.0, 1.0] range
+        # input images scaled to 0,1
+        img_t = self.T(input_img)
+        img_t = F.to_tensor(img_t)
+        # output images scaled to -1,1
+        output_t = self.T(output_img)
+        output_t = F.to_tensor(output_t)
         output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
 
-        # Tokenize the caption
         input_ids = self.tokenizer(
             caption, max_length=self.tokenizer.model_max_length,
             padding="max_length", truncation=True, return_tensors="pt"
@@ -282,10 +303,12 @@ class PairedDataset(torch.utils.data.Dataset):
 
         return {
             "output_pixel_values": output_t,
-            "conditioning_pixel_values": input_t,
+            "conditioning_pixel_values": img_t,
             "caption": caption,
-            "input_ids": input_ids[0], # Return the tensor directly
+            "input_ids": input_ids,
         }
+
+
 class UnpairedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_folder, split, image_prep, tokenizer):
         """
@@ -339,58 +362,49 @@ class UnpairedDataset(torch.utils.data.Dataset):
         """
         return len(self.l_imgs_src) + len(self.l_imgs_tgt)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         """
-        Retrieves and augments a dataset item. This version includes on-the-fly
-        data augmentation to amplify the dataset.
+        Fetches a pair of unaligned images from the source and target domains along with their 
+        corresponding tokenized captions.
+
+        For the source domain, if the requested index is within the range of available images,
+        the specific image at that index is chosen. If the index exceeds the number of source
+        images, a random source image is selected. For the target domain,
+        an image is always randomly selected, irrespective of the index, to maintain the 
+        unpaired nature of the dataset.
+
+        Both images are preprocessed according to the specified image transformation `T`, and normalized.
+        The fixed captions for both domains
+        are included along with their tokenized forms.
+
+        Parameters:
+        - index (int): The index of the source image to retrieve.
+
+        Returns:
+        dict: A dictionary containing processed data for a single training example, with the following keys:
+            - "pixel_values_src": The processed source image
+            - "pixel_values_tgt": The processed target image
+            - "caption_src": The fixed caption of the source domain.
+            - "caption_tgt": The fixed caption of the target domain.
+            - "input_ids_src": The source domain's fixed caption tokenized.
+            - "input_ids_tgt": The target domain's fixed caption tokenized.
         """
-        img_name = self.img_names[idx]
-        
-        # Load images and ensure they are in RGB format
-        input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
-        output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
-        
-        caption = self.captions[img_name]
-
-        # --- START: Data Augmentation and Pre-processing ---
-
-        # 1. Apply geometric transforms that MUST be identical for the pair.
-        
-        # Resize images to 512x512
-        resize = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
-        input_img = resize(input_img)
-        output_img = resize(output_img)
-
-        # Apply a random horizontal flip to both images with 50% probability
-        if random.random() > 0.5:
-            input_img = F.hflip(input_img)
-            output_img = F.hflip(output_img)
-            
-        # 2. Convert images to PyTorch Tensors
-        # This scales pixel values to the [0.0, 1.0] range.
-        input_t = F.to_tensor(input_img)
-        output_t = F.to_tensor(output_img)
-
-        # 3. Apply color augmentation ONLY to the input image.
-        # We don't want to change the colors of the target airflow visualization.
-        color_jitter = transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2)
-        input_t = color_jitter(input_t)
-
-        # 4. Normalize the output image tensor to the [-1.0, 1.0] range.
-        # The input tensor remains in the [0.0, 1.0] range as expected by the model.
-        output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
-
-        # --- END: Data Augmentation and Pre-processing ---
-
-        # Tokenize the caption
-        input_ids = self.tokenizer(
-            caption, max_length=self.tokenizer.model_max_length,
-            padding="max_length", truncation=True, return_tensors="pt"
-        ).input_ids
-
+        if index < len(self.l_imgs_src):
+            img_path_src = self.l_imgs_src[index]
+        else:
+            img_path_src = random.choice(self.l_imgs_src)
+        img_path_tgt = random.choice(self.l_imgs_tgt)
+        img_pil_src = Image.open(img_path_src).convert("RGB")
+        img_pil_tgt = Image.open(img_path_tgt).convert("RGB")
+        img_t_src = F.to_tensor(self.T(img_pil_src))
+        img_t_tgt = F.to_tensor(self.T(img_pil_tgt))
+        img_t_src = F.normalize(img_t_src, mean=[0.5], std=[0.5])
+        img_t_tgt = F.normalize(img_t_tgt, mean=[0.5], std=[0.5])
         return {
-            "output_pixel_values": output_t,
-            "conditioning_pixel_values": input_t,
-            "caption": caption,
-            "input_ids": input_ids,
+            "pixel_values_src": img_t_src,
+            "pixel_values_tgt": img_t_tgt,
+            "caption_src": self.fixed_caption_src,
+            "caption_tgt": self.fixed_caption_tgt,
+            "input_ids_src": self.input_ids_src,
+            "input_ids_tgt": self.input_ids_tgt,
         }
