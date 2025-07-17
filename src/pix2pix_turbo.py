@@ -42,7 +42,11 @@ class Pix2Pix_Turbo(torch.nn.Module):
         vae.decoder.skip_conv_3 = torch.nn.Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
         vae.decoder.skip_conv_4 = torch.nn.Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
         vae.decoder.ignore_skip = False
-        unet = UNet2DConditionModel.from_pretrained("stabilityai/sd-turbo", subfolder="unet")
+        unet = UNet2DConditionModel.from_pretrained(
+            "stabilityai/sd-turbo",
+            subfolder="unet",
+            in_channels=4,  # Change the input channels from 3 to 4
+        )
 
         if pretrained_name == "edge_to_image":
             url = "https://www.cs.cmu.edu/~img2img-turbo/models/edge_to_image_loras.pkl"

@@ -219,84 +219,55 @@ def build_transform(image_prep):
 
 class PairedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_folder, split, image_prep, tokenizer):
-        """
-        Itialize the paired dataset object for loading and transforming paired data samples
-        from specified dataset folders.
-
-        This constructor sets up the paths to input and output folders based on the specified 'split',
-        loads the captions (or prompts) for the input images, and prepares the transformations and
-        tokenizer to be applied on the data.
-
-        Parameters:
-        - dataset_folder (str): The root folder containing the dataset, expected to include
-                                sub-folders for different splits (e.g., 'train_A', 'train_B').
-        - split (str): The dataset split to use ('train' or 'test'), used to select the appropriate
-                       sub-folders and caption files within the dataset folder.
-        - image_prep (str): The image preprocessing transformation to apply to each image.
-        - tokenizer: The tokenizer used for tokenizing the captions (or prompts).
-        """
         super().__init__()
         if split == "train":
             self.input_folder = os.path.join(dataset_folder, "train_A")
             self.output_folder = os.path.join(dataset_folder, "train_B")
-            captions = os.path.join(dataset_folder, "train_prompts.json")
+            self.edge_folder = os.path.join(dataset_folder, "train_edges") # Path to new edge maps
+            captions_path = os.path.join(dataset_folder, "train_prompts.json")
         elif split == "test":
             self.input_folder = os.path.join(dataset_folder, "test_A")
             self.output_folder = os.path.join(dataset_folder, "test_B")
-            captions = os.path.join(dataset_folder, "test_prompts.json")
-        with open(captions, "r") as f:
+            self.edge_folder = None # No edges needed for testing
+            captions_path = os.path.join(dataset_folder, "test_prompts.json")
+        
+        with open(captions_path, "r") as f:
             self.captions = json.load(f)
+        
         self.img_names = list(self.captions.keys())
-        self.T = build_transform(image_prep)
         self.tokenizer = tokenizer
 
     def __len__(self):
-        """
-        Returns:
-        int: The total number of items in the dataset.
-        """
-        return len(self.captions)
+        return len(self.img_names)
 
     def __getitem__(self, idx):
-        """
-        Retrieves a dataset item given its index. Each item consists of an input image, 
-        its corresponding output image, the captions associated with the input image, 
-        and the tokenized form of this caption.
-
-        This method performs the necessary preprocessing on both the input and output images, 
-        including scaling and normalization, as well as tokenizing the caption using a provided tokenizer.
-
-        Parameters:
-        - idx (int): The index of the item to retrieve.
-
-        Returns:
-        dict: A dictionary containing the following key-value pairs:
-            - "output_pixel_values": a tensor of the preprocessed output image with pixel values 
-            scaled to [-1, 1].
-            - "conditioning_pixel_values": a tensor of the preprocessed input image with pixel values 
-            scaled to [0, 1].
-            - "caption": the text caption.
-            - "input_ids": a tensor of the tokenized caption.
-
-        Note:
-        The actual preprocessing steps (scaling and normalization) for images are defined externally 
-        and passed to this class through the `image_prep` parameter during initialization. The 
-        tokenization process relies on the `tokenizer` also provided at initialization, which 
-        should be compatible with the models intended to be used with this dataset.
-        """
         img_name = self.img_names[idx]
+        caption = self.captions[img_name]
+        
+        # Load the three images
         input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
         output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
-        caption = self.captions[img_name]
+        
+        # --- New Logic ---
+        # If we have an edge folder, load the edge map
+        if self.edge_folder:
+            edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L") # Load as grayscale
+            
+            # Convert to tensors
+            input_t = F.to_tensor(input_img)
+            edge_t = F.to_tensor(edge_img)
+            
+            # Combine the airfoil (3 channels) and the edge map (1 channel)
+            combined_input_t = torch.cat([input_t, edge_t], dim=0)
+        else:
+            # For the test set, just use the normal 3-channel input
+            combined_input_t = F.to_tensor(input_img)
 
-        # input images scaled to 0,1
-        img_t = self.T(input_img)
-        img_t = F.to_tensor(img_t)
-        # output images scaled to -1,1
-        output_t = self.T(output_img)
-        output_t = F.to_tensor(output_t)
+        # Process the output image
+        output_t = F.to_tensor(output_img)
         output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
 
+        # Tokenize the caption
         input_ids = self.tokenizer(
             caption, max_length=self.tokenizer.model_max_length,
             padding="max_length", truncation=True, return_tensors="pt"
@@ -304,11 +275,10 @@ class PairedDataset(torch.utils.data.Dataset):
 
         return {
             "output_pixel_values": output_t,
-            "conditioning_pixel_values": img_t,
+            "conditioning_pixel_values": combined_input_t, # Use the combined input
             "caption": caption,
-            "input_ids": input_ids,
+            "input_ids": input_ids[0],
         }
-
 
 class UnpairedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_folder, split, image_prep, tokenizer):
