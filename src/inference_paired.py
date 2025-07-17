@@ -45,6 +45,7 @@ if __name__ == "__main__":
     # translate the image
     with torch.no_grad():
         if args.model_name == 'edge_to_image':
+            # This part is for the original pretrained models, not your fine-tuned one
             canny = canny_from_pil(input_image, args.low_threshold, args.high_threshold)
             canny_viz_inv = Image.fromarray(255 - np.array(canny))
             canny_viz_inv.save(os.path.join(args.output_dir, bname.replace('.png', '_canny.png')))
@@ -54,6 +55,7 @@ if __name__ == "__main__":
             output_image = model(c_t, args.prompt)
 
         elif args.model_name == 'sketch_to_image_stochastic':
+            # This part is for the original pretrained models, not your fine-tuned one
             image_t = F.to_tensor(input_image) < 0.5
             c_t = image_t.unsqueeze(0).cuda().float()
             torch.manual_seed(args.seed)
@@ -65,40 +67,42 @@ if __name__ == "__main__":
             output_image = model(c_t, args.prompt, deterministic=False, r=args.gamma, noise_map=noise)
 
         else:
-            # This is the path your fine-tuned model will use
-            c_t = F.to_tensor(input_image).unsqueeze(0).cuda()
+            # --- THIS IS THE CORRECTED LOGIC FOR YOUR FINE-TUNED MODEL ---
+            # This is the path your model will use when model_name is not specified
+            
+            # 1. Convert the 3-channel input image to a tensor
+            input_t = F.to_tensor(input_image).unsqueeze(0).cuda()
+
+            # 2. Create an empty fourth channel (all zeros)
+            _, _, H, W = input_t.shape
+            empty_channel = torch.zeros(1, 1, H, W, device=input_t.device, dtype=input_t.dtype)
+            
+            # 3. Combine them to create the 4-channel input the model expects
+            c_t = torch.cat([input_t, empty_channel], dim=1)
+
             if args.use_fp16:
                 c_t = c_t.half()
+            
+            # 4. Run inference
             output_image = model(c_t, args.prompt)
 
         # Convert the raw model output (flow only) to a PIL Image
         flow_only_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
 
-    # --- NEW COMPOSITING STEP ---
-    # Convert PIL images to OpenCV format for merging
-    # The original input image is re-loaded to ensure it's clean
+    # --- COMPOSITING STEP (No changes needed here) ---
     input_cv = cv2.imread(args.input_image)
     flow_cv = cv2.cvtColor(np.array(flow_only_pil), cv2.COLOR_RGB2BGR)
 
-    # Ensure both images are the same size before merging
     h, w, _ = input_cv.shape
     flow_cv = cv2.resize(flow_cv, (w, h))
 
-    # Create a mask of the non-black pixels in the flow image
     gray_flow = cv2.cvtColor(flow_cv, cv2.COLOR_BGR2GRAY)
     mask = gray_flow > 0
 
-    # Create a copy of the input image to draw on
     final_image = input_cv.copy()
-    
-    # Where the mask is true (i.e., where the flow is), replace the pixels
-    # with the pixels from the flow image.
     final_image[mask] = flow_cv[mask]
 
-    # --- SAVE THE FINAL COMPOSITE IMAGE ---
-    # Save the merged image with a new name
     composite_filename = bname.replace('.png', '_composite.png')
     cv2.imwrite(os.path.join(args.output_dir, composite_filename), final_image)
     
     print(f"✅ Final composite image saved to: {os.path.join(args.output_dir, composite_filename)}")
-
