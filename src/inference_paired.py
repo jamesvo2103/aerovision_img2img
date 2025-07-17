@@ -73,7 +73,7 @@ if __name__ == "__main__":
             # 1. Convert the 3-channel input image to a tensor
             input_t = F.to_tensor(input_image).unsqueeze(0).cuda()
 
-            # 2. Create an empty fourth channel (all zeros)
+            # 2. Create an empty fourth channel (all zeros) to match the training input
             _, _, H, W = input_t.shape
             empty_channel = torch.zeros(1, 1, H, W, device=input_t.device, dtype=input_t.dtype)
             
@@ -89,19 +89,27 @@ if __name__ == "__main__":
         # Convert the raw model output (flow only) to a PIL Image
         flow_only_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
 
-    # --- COMPOSITING STEP (No changes needed here) ---
+    # --- COMPOSITING STEP ---
+    # This part correctly merges the generated flow onto the original input
     input_cv = cv2.imread(args.input_image)
     flow_cv = cv2.cvtColor(np.array(flow_only_pil), cv2.COLOR_RGB2BGR)
 
     h, w, _ = input_cv.shape
     flow_cv = cv2.resize(flow_cv, (w, h))
 
+    # Create a mask of the non-black pixels in the flow image
     gray_flow = cv2.cvtColor(flow_cv, cv2.COLOR_BGR2GRAY)
     mask = gray_flow > 0
 
+    # Create a copy of the input image to draw on
     final_image = input_cv.copy()
+    
+    # Where the mask is true (i.e., where the flow is), replace the pixels
+    # with the pixels from the flow image.
     final_image[mask] = flow_cv[mask]
 
+    # --- SAVE THE FINAL COMPOSITE IMAGE ---
+    # Save the merged image with a new name
     composite_filename = bname.replace('.png', '_composite.png')
     cv2.imwrite(os.path.join(args.output_dir, composite_filename), final_image)
     
