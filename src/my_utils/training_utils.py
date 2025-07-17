@@ -17,7 +17,7 @@ def parse_args_paired_training(input_args=None):
 
     Returns:
     argparse.Namespace: The parsed command-line arguments.
-   """
+    """
     parser = argparse.ArgumentParser()
     # args for the loss function
     parser.add_argument("--gan_disc_type", default="vagan_clip")
@@ -60,13 +60,17 @@ def parse_args_paired_training(input_args=None):
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.",)
     parser.add_argument("--gradient_checkpointing", action="store_true",)
     parser.add_argument("--learning_rate", type=float, default=5e-6)
+    
+    # --- THIS IS THE CORRECT LOCATION FOR THE NEW ARGUMENT ---
     parser.add_argument("--disc_learning_rate", type=float, default=None, help="Separate learning rate for the discriminator.")
+    
     parser.add_argument("--lr_scheduler", type=str, default="constant",
         help=(
             'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
             ' "constant", "constant_with_warmup"]'
         ),
     )
+    # ... (rest of the file remains exactly the same) ...
     parser.add_argument("--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler.")
     parser.add_argument("--lr_num_cycles", type=int, default=1,
         help="Number of hard resets of the lr in cosine_with_restarts scheduler.",
