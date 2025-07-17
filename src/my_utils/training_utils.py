@@ -244,16 +244,23 @@ class PairedDataset(torch.utils.data.Dataset):
         img_name = self.img_names[idx]
         caption = self.captions[img_name]
         
-        # Load the three images
+        # Load all three images
         input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
         output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
         
         # --- New Logic ---
-        # If we have an edge folder, load the edge map
+        # Define a single, consistent resize transform
+        resize_transform = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
+
+        # Apply the SAME resize transform to all images to guarantee matching sizes
+        input_img = resize_transform(input_img)
+        output_img = resize_transform(output_img)
+
+        # If we have an edge folder, load and resize the edge map as well
         if self.edge_folder:
-            edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L") # Load as grayscale
+            edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
+            edge_img = resize_transform(edge_img)
             
-            # Convert to tensors
             input_t = F.to_tensor(input_img)
             edge_t = F.to_tensor(edge_img)
             
