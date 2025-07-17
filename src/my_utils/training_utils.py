@@ -60,6 +60,7 @@ def parse_args_paired_training(input_args=None):
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.",)
     parser.add_argument("--gradient_checkpointing", action="store_true",)
     parser.add_argument("--learning_rate", type=float, default=5e-6)
+    parser.add_argument("--disc_learning_rate", type=float, default=None, help="Separate learning rate for the discriminator.")
     parser.add_argument("--lr_scheduler", type=str, default="constant",
         help=(
             'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'

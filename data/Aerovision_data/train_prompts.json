@@ -50,5 +50,11 @@
 "48.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NASASC(2) 0714 airfoil at a high 35-degree angle of attack",
 "49.png" : "Low density, Smooth, attached laminar airflow over a NACA 2415 airfoil at 0 degrees angle of attack",
 "50.png" : "Low density, Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 2415 airfoil at a high 17.5-degree angle of attack",
-"51.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NACA 2415 airfoil at a high 35-degree angle of attack"
+"51.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NACA 2415 airfoil at a high 35-degree angle of attack",
+"52.png" : "Low density, Smooth, attached laminar airflow over a NACA 2412 airfoil at 0 degrees angle of attack",
+"53.png" : "Low density, Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a NACA 2412 airfoil at a high 17.5-degree angle of attack",
+"54.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NACA 2412 airfoil at a high 35-degree angle of attack",
+"55.png" : "High density, Smooth, attached laminar airflow over a SELIG_S1223 airfoil at 0 degrees angle of attack",
+"56.png" : "High density, Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a SELIG_S1223 airfoil at a high 17.5-degree angle of attack",
+"57.png" : "High density, Deep aerodynamic stall showing flow fully separated from the top surface, forming a wide and disordered wake behind a SELIG_S1223 at a very high 35-degree angle of attack"
 }

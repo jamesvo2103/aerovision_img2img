@@ -103,9 +103,10 @@ def main(args):
         num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles, power=args.lr_power,)
 
-    optimizer_disc = torch.optim.AdamW(net_disc.parameters(), lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,)
+    disc_lr = args.learning_rate if args.disc_learning_rate is None else args.disc_learning_rate
+    optimizer_disc = torch.optim.AdamW(net_disc.parameters(), lr=disc_lr,
+    betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
+    eps=args.adam_epsilon,)
     lr_scheduler_disc = get_scheduler(args.lr_scheduler, optimizer=optimizer_disc,
             num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
             num_training_steps=args.max_train_steps * accelerator.num_processes,
@@ -208,10 +209,7 @@ def main(args):
                 Discriminator loss: fake image vs real image
                 """
                 # real image
-                with torch.no_grad():
-                    smooth_real_labels = torch.full_like(net_disc(x_tgt.detach()), 0.9)
-
-                lossD_real = F.mse_loss(net_disc(x_tgt.detach(), for_real=True), smooth_real_labels) * args.lambda_gan
+                lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * args.lambda_gan
                 accelerator.backward(lossD_real.mean())
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
