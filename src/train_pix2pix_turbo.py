@@ -209,10 +209,7 @@ def main(args):
                 Discriminator loss: fake image vs real image
                 """
                 # real image
-                with torch.no_grad():
-                    smooth_real_labels = torch.full_like(net_disc(x_tgt.detach()), 0.9)
-
-                lossD_real = F.mse_loss(net_disc(x_tgt.detach(), for_real=True), smooth_real_labels) * args.lambda_gan
+                lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * args.lambda_gan
                 accelerator.backward(lossD_real.mean())
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
