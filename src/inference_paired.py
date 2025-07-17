@@ -7,6 +7,7 @@ from torchvision import transforms
 import torchvision.transforms.functional as F
 from pix2pix_turbo import Pix2Pix_Turbo
 from image_prep import canny_from_pil
+import cv2 # Import OpenCV
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -23,7 +24,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # only one of model_name and model_path should be provided
-    if args.model_name == '' != args.model_path == '':
+    if args.model_name == '' and args.model_path == '':
         raise ValueError('Either model_name or model_path should be provided')
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -64,12 +65,40 @@ if __name__ == "__main__":
             output_image = model(c_t, args.prompt, deterministic=False, r=args.gamma, noise_map=noise)
 
         else:
+            # This is the path your fine-tuned model will use
             c_t = F.to_tensor(input_image).unsqueeze(0).cuda()
             if args.use_fp16:
                 c_t = c_t.half()
             output_image = model(c_t, args.prompt)
 
-        output_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
+        # Convert the raw model output (flow only) to a PIL Image
+        flow_only_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
 
-    # save the output image
-    output_pil.save(os.path.join(args.output_dir, bname))
+    # --- NEW COMPOSITING STEP ---
+    # Convert PIL images to OpenCV format for merging
+    # The original input image is re-loaded to ensure it's clean
+    input_cv = cv2.imread(args.input_image)
+    flow_cv = cv2.cvtColor(np.array(flow_only_pil), cv2.COLOR_RGB2BGR)
+
+    # Ensure both images are the same size before merging
+    h, w, _ = input_cv.shape
+    flow_cv = cv2.resize(flow_cv, (w, h))
+
+    # Create a mask of the non-black pixels in the flow image
+    gray_flow = cv2.cvtColor(flow_cv, cv2.COLOR_BGR2GRAY)
+    mask = gray_flow > 0
+
+    # Create a copy of the input image to draw on
+    final_image = input_cv.copy()
+    
+    # Where the mask is true (i.e., where the flow is), replace the pixels
+    # with the pixels from the flow image.
+    final_image[mask] = flow_cv[mask]
+
+    # --- SAVE THE FINAL COMPOSITE IMAGE ---
+    # Save the merged image with a new name
+    composite_filename = bname.replace('.png', '_composite.png')
+    cv2.imwrite(os.path.join(args.output_dir, composite_filename), final_image)
+    
+    print(f"✅ Final composite image saved to: {os.path.join(args.output_dir, composite_filename)}")
+
