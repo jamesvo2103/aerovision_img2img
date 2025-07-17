@@ -240,37 +240,45 @@ class PairedDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.img_names)
 
+    #
+# Replace the entire __getitem__ method in your PairedDataset class
+# inside my_utils/training_utils.py with this new version
+#
+
     def __getitem__(self, idx):
         img_name = self.img_names[idx]
         caption = self.captions[img_name]
-        
-        # Load all three images
+
+        # --- Step 1: Load all images ---
         input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
         output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
         
-        # --- New Logic ---
-        # Define a single, consistent resize transform
+        # --- Step 2: Create a single resize transform for consistency ---
         resize_transform = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
 
-        # Apply the SAME resize transform to all images to guarantee matching sizes
+        # --- Step 3: Apply the SAME resize transform to all images first ---
         input_img = resize_transform(input_img)
         output_img = resize_transform(output_img)
 
-        # If we have an edge folder, load and resize the edge map as well
+        # --- Step 4: Prepare the 4-channel input tensor ---
+        # Convert the RGB airfoil to a 3-channel tensor
+        input_t = F.to_tensor(input_img)
+
+        # Check if we are in the training phase and need to add the edge map
         if self.edge_folder:
             edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
-            edge_img = resize_transform(edge_img)
-            
-            input_t = F.to_tensor(input_img)
+            edge_img = resize_transform(edge_img) # Also resize the edge map
             edge_t = F.to_tensor(edge_img)
             
-            # Combine the airfoil (3 channels) and the edge map (1 channel)
-            combined_input_t = torch.cat([input_t, edge_t], dim=0)
+            # Stack the 3-channel airfoil and 1-channel edge map to create a 4-channel tensor
+            conditioning_pixel_values = torch.cat([input_t, edge_t], dim=0)
         else:
-            # For the test set, just use the normal 3-channel input
-            combined_input_t = F.to_tensor(input_img)
+            # For testing, we only use the 3-channel input
+            # We will pad it with an empty channel to match the model's expected 4-channel input
+            empty_channel = torch.zeros(1, 512, 512)
+            conditioning_pixel_values = torch.cat([input_t, empty_channel], dim=0)
 
-        # Process the output image
+        # --- Step 5: Process the output image ---
         output_t = F.to_tensor(output_img)
         output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
 
@@ -282,7 +290,7 @@ class PairedDataset(torch.utils.data.Dataset):
 
         return {
             "output_pixel_values": output_t,
-            "conditioning_pixel_values": combined_input_t, # Use the combined input
+            "conditioning_pixel_values": conditioning_pixel_values,
             "caption": caption,
             "input_ids": input_ids[0],
         }
