@@ -60,7 +60,7 @@ def parse_args_paired_training(input_args=None):
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.",)
     parser.add_argument("--gradient_checkpointing", action="store_true",)
     parser.add_argument("--learning_rate", type=float, default=5e-6)
-    parser.add_argument("--use_augmentation", action="store_true", help="Enable on-the-fly data augmentation.")
+    
     
     # --- THIS IS THE CORRECT LOCATION FOR THE NEW ARGUMENT ---
     parser.add_argument("--disc_learning_rate", type=float, default=None, help="Separate learning rate for the discriminator.")
@@ -263,19 +263,6 @@ class PairedDataset(torch.utils.data.Dataset):
             edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
 
         # --- Step 2: Apply Augmentations (if enabled) ---
-        if self.use_augmentation and self.edge_folder:
-            # 2a. Random Horizontal Flip
-            if random.random() > 0.5:
-                input_img = F.hflip(input_img)
-                output_img = F.hflip(output_img)
-                edge_img = F.hflip(edge_img)
-            
-            # 2b. Random Rotation
-            # Get a single random angle and apply it to all images
-            angle = transforms.RandomRotation.get_params([-10, 10]) # Rotate between -10 and +10 degrees
-            input_img = F.rotate(input_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
-            output_img = F.rotate(output_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
-            edge_img = F.rotate(edge_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
 
         # --- Step 3: Apply the SAME resize transform to all images ---
         input_img = self.resize_transform(input_img)
