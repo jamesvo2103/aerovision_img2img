@@ -60,6 +60,7 @@ def parse_args_paired_training(input_args=None):
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.",)
     parser.add_argument("--gradient_checkpointing", action="store_true",)
     parser.add_argument("--learning_rate", type=float, default=5e-6)
+    parser.add_argument("--use_augmentation", action="store_true", help="Enable on-the-fly data augmentation.")
     
     # --- THIS IS THE CORRECT LOCATION FOR THE NEW ARGUMENT ---
     parser.add_argument("--disc_learning_rate", type=float, default=None, help="Separate learning rate for the discriminator.")
@@ -222,17 +223,18 @@ def build_transform(image_prep):
 
 
 class PairedDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_folder, split, image_prep, tokenizer):
+    def __init__(self, dataset_folder, split, image_prep, tokenizer, use_augmentation=False):
         super().__init__()
+        self.use_augmentation = use_augmentation
         if split == "train":
             self.input_folder = os.path.join(dataset_folder, "train_A")
             self.output_folder = os.path.join(dataset_folder, "train_B")
-            self.edge_folder = os.path.join(dataset_folder, "train_edges") # Path to new edge maps
+            self.edge_folder = os.path.join(dataset_folder, "train_edges")
             captions_path = os.path.join(dataset_folder, "train_prompts.json")
         elif split == "test":
             self.input_folder = os.path.join(dataset_folder, "test_A")
             self.output_folder = os.path.join(dataset_folder, "test_B")
-            self.edge_folder = None # No edges needed for testing
+            self.edge_folder = None
             captions_path = os.path.join(dataset_folder, "test_prompts.json")
         
         with open(captions_path, "r") as f:
@@ -240,14 +242,12 @@ class PairedDataset(torch.utils.data.Dataset):
         
         self.img_names = list(self.captions.keys())
         self.tokenizer = tokenizer
+        
+        # Consistent resize transform for all images
+        self.resize_transform = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
 
     def __len__(self):
         return len(self.img_names)
-
-    #
-# Replace the entire __getitem__ method in your PairedDataset class
-# inside my_utils/training_utils.py with this new version
-#
 
     def __getitem__(self, idx):
         img_name = self.img_names[idx]
@@ -257,28 +257,39 @@ class PairedDataset(torch.utils.data.Dataset):
         input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
         output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
         
-        # --- Step 2: Create a single resize transform for consistency ---
-        resize_transform = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
-
-        # --- Step 3: Apply the SAME resize transform to all images first ---
-        input_img = resize_transform(input_img)
-        output_img = resize_transform(output_img)
-
-        # --- Step 4: Prepare the 4-channel input tensor ---
-        # Convert the RGB airfoil to a 3-channel tensor
-        input_t = F.to_tensor(input_img)
-
-        # Check if we are in the training phase and need to add the edge map
+        # Load edge map only during training
+        edge_img = None
         if self.edge_folder:
             edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
-            edge_img = resize_transform(edge_img) # Also resize the edge map
-            edge_t = F.to_tensor(edge_img)
+
+        # --- Step 2: Apply Augmentations (if enabled) ---
+        if self.use_augmentation and self.edge_folder:
+            # 2a. Random Horizontal Flip
+            if random.random() > 0.5:
+                input_img = F.hflip(input_img)
+                output_img = F.hflip(output_img)
+                edge_img = F.hflip(edge_img)
             
-            # Stack the 3-channel airfoil and 1-channel edge map to create a 4-channel tensor
+            # 2b. Random Rotation
+            # Get a single random angle and apply it to all images
+            angle = transforms.RandomRotation.get_params([-10, 10]) # Rotate between -10 and +10 degrees
+            input_img = F.rotate(input_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
+            output_img = F.rotate(output_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
+            edge_img = F.rotate(edge_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
+
+        # --- Step 3: Apply the SAME resize transform to all images ---
+        input_img = self.resize_transform(input_img)
+        output_img = self.resize_transform(output_img)
+        if self.edge_folder:
+            edge_img = self.resize_transform(edge_img)
+
+        # --- Step 4: Prepare the 4-channel input tensor ---
+        input_t = F.to_tensor(input_img)
+        
+        if self.edge_folder:
+            edge_t = F.to_tensor(edge_img)
             conditioning_pixel_values = torch.cat([input_t, edge_t], dim=0)
-        else:
-            # For testing, we only use the 3-channel input
-            # We will pad it with an empty channel to match the model's expected 4-channel input
+        else: # For testing, pad with an empty channel
             empty_channel = torch.zeros(1, 512, 512)
             conditioning_pixel_values = torch.cat([input_t, empty_channel], dim=0)
 
@@ -286,7 +297,7 @@ class PairedDataset(torch.utils.data.Dataset):
         output_t = F.to_tensor(output_img)
         output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
 
-        # Tokenize the caption
+        # --- Step 6: Tokenize the caption ---
         input_ids = self.tokenizer(
             caption, max_length=self.tokenizer.model_max_length,
             padding="max_length", truncation=True, return_tensors="pt"
