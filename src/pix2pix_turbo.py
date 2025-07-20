@@ -227,5 +227,5 @@ class Pix2Pix_Turbo(torch.nn.Module):
         sd["rank_unet"] = self.lora_rank_unet
         sd["rank_vae"] = self.lora_rank_vae
         sd["state_dict_unet"] = {k: v for k, v in self.unet.state_dict().items() if "lora" in k or "conv_in" in k}
-        sd["state_dict_vae"] = {k: v for k, v in self.vae.state_dict().items() if "lora" in k or "skip" in k}
+        sd["state_dict_vae"] = {k: v for k, v in self.vae.state_dict().items() if "lora" in k or "skip" in k or "conv_in" in k}
         torch.save(sd, outf)

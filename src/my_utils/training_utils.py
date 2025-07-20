@@ -262,8 +262,6 @@ class PairedDataset(torch.utils.data.Dataset):
         if self.edge_folder:
             edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
 
-        # --- Step 2: Apply Augmentations (if enabled) ---
-
         # --- Step 3: Apply the SAME resize transform to all images ---
         input_img = self.resize_transform(input_img)
         output_img = self.resize_transform(output_img)
