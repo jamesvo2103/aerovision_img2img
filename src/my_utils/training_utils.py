@@ -263,15 +263,6 @@ class PairedDataset(torch.utils.data.Dataset):
         # Convert back to a 3-channel PIL Image to be consistent with augmentations
         canny_img = Image.fromarray(edges_cv).convert("RGB")
 
-        # --- Step 3: Apply Augmentations (if enabled) ---
-        if self.use_augmentation:
-            if random.random() > 0.5:
-                canny_img = F.hflip(canny_img)
-                output_img = F.hflip(output_img)
-            angle = transforms.RandomRotation.get_params([-10, 10])
-            canny_img = F.rotate(canny_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
-            output_img = F.rotate(output_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
-
         # --- Step 4: Resize and Convert to Tensors ---
         canny_img = self.resize_transform(canny_img)
         output_img = self.resize_transform(output_img)
