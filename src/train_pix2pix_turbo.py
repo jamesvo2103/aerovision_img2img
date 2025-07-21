@@ -174,9 +174,11 @@ def main(args):
                 B, C, H, W = x_src.shape
                 # forward pass
                 x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
+
+                mask = (x_tgt > -1.0).float()
                 # Reconstruction loss
-                loss_l2 = F.mse_loss(x_tgt_pred.float(), x_tgt.float(), reduction="mean") * args.lambda_l2
-                loss_lpips = net_lpips(x_tgt_pred.float(), x_tgt.float()).mean() * args.lambda_lpips
+                loss_l2 = F.mse_loss(x_tgt_pred * mask, x_tgt.float() * mask, reduction="mean") * args.lambda_l2
+                loss_lpips = net_lpips(x_tgt_pred * mask, x_tgt.float() * mask).mean() * args.lambda_lpips
                 loss = loss_l2 + loss_lpips
                 # CLIP similarity loss
                 if args.lambda_clipsim > 0:
