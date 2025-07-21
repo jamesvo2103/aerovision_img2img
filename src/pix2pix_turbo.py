@@ -37,7 +37,7 @@ class Pix2Pix_Turbo(torch.nn.Module):
         vae.encoder.forward = my_vae_encoder_fwd.__get__(vae.encoder, vae.encoder.__class__)
         vae.decoder.forward = my_vae_decoder_fwd.__get__(vae.decoder, vae.decoder.__class__)
         # This is the new line to add
-        vae.encoder.conv_in = torch.nn.Conv2d(4, vae.encoder.conv_in.out_channels, kernel_size=3, stride=1, padding=1)
+        vae.encoder.conv_in = torch.nn.Conv2d(3, vae.encoder.conv_in.out_channels, kernel_size=3, stride=1, padding=1)
         # add the skip connection convs
         vae.decoder.skip_conv_1 = torch.nn.Conv2d(512, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
         vae.decoder.skip_conv_2 = torch.nn.Conv2d(256, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()

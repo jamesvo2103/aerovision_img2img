@@ -67,27 +67,21 @@ if __name__ == "__main__":
             output_image = model(c_t, args.prompt, deterministic=False, r=args.gamma, noise_map=noise)
 
         else:
-            # --- THIS IS THE CORRECTED LOGIC FOR YOUR FINE-TUNED MODEL ---
-            # This is the path your model will use when model_name is not specified
-            
-            # 1. Convert the 3-channel input image to a tensor
-            input_t = F.to_tensor(input_image).unsqueeze(0).cuda()
+          # --- THIS IS THE CORRECTED LOGIC FOR THE NEW STRATEGY ---
+          
+          # 1. Generate the Canny edge map from the input image
+          input_cv = np.array(input_image)
+          edges_cv = cv2.Canny(input_cv, 100, 200)
+          canny_pil = Image.fromarray(edges_cv).convert("RGB")
 
-            # 2. Create an empty fourth channel (all zeros) to match the training input
-            _, _, H, W = input_t.shape
-            empty_channel = torch.zeros(1, 1, H, W, device=input_t.device, dtype=input_t.dtype)
-            
-            # 3. Combine them to create the 4-channel input the model expects
-            c_t = torch.cat([input_t, empty_channel], dim=1)
+          # 2. Convert to a tensor
+          c_t = F.to_tensor(canny_pil).unsqueeze(0).cuda()
 
-            if args.use_fp16:
-                c_t = c_t.half()
-            
-            # 4. Run inference
-            output_image = model(c_t, args.prompt)
-
-        # Convert the raw model output (flow only) to a PIL Image
-        flow_only_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
+          if args.use_fp16:
+              c_t = c_t.half()
+          
+          # 3. Run inference
+          output_image = model(c_t, args.prompt)
 
     # --- COMPOSITING STEP ---
     # This part correctly merges the generated flow onto the original input

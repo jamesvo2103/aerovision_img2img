@@ -8,6 +8,8 @@ from PIL import Image
 from torchvision import transforms
 import torchvision.transforms.functional as F
 from glob import glob
+import cv2
+import numpy as np
 
 
 def parse_args_paired_training(input_args=None):
@@ -229,21 +231,17 @@ class PairedDataset(torch.utils.data.Dataset):
         if split == "train":
             self.input_folder = os.path.join(dataset_folder, "train_A")
             self.output_folder = os.path.join(dataset_folder, "train_B")
-            self.edge_folder = os.path.join(dataset_folder, "train_edges")
             captions_path = os.path.join(dataset_folder, "train_prompts.json")
         elif split == "test":
             self.input_folder = os.path.join(dataset_folder, "test_A")
             self.output_folder = os.path.join(dataset_folder, "test_B")
-            self.edge_folder = None
             captions_path = os.path.join(dataset_folder, "test_prompts.json")
-        
+
         with open(captions_path, "r") as f:
             self.captions = json.load(f)
-        
+
         self.img_names = list(self.captions.keys())
         self.tokenizer = tokenizer
-        
-        # Consistent resize transform for all images
         self.resize_transform = transforms.Resize((512, 512), interpolation=transforms.InterpolationMode.LANCZOS)
 
     def __len__(self):
@@ -253,44 +251,38 @@ class PairedDataset(torch.utils.data.Dataset):
         img_name = self.img_names[idx]
         caption = self.captions[img_name]
 
-        # --- Step 1: Load all images ---
+        # --- Step 1: Load images ---
         input_img = Image.open(os.path.join(self.input_folder, img_name)).convert("RGB")
         output_img = Image.open(os.path.join(self.output_folder, img_name)).convert("RGB")
-        
-        # Load edge map only during training
-        edge_img = None
-        if self.edge_folder:
-            edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
-            
-        if self.use_augmentation and self.edge_folder:
-    
-    # --- NEW: GUIDANCE DROPOUT ---
-    # Randomly "drop" the edge map 25% of the time to make the model more robust
-            if random.random() < 0.25:
-        # Replace the real edge map with an empty black image
-                edge_img = Image.new('L', edge_img.size, 0)
-    
-        # --- Step 3: Apply the SAME resize transform to all images ---
-        input_img = self.resize_transform(input_img)
+
+        # --- Step 2: Create Canny Edge Map from Input ---
+        # Convert PIL image to OpenCV format
+        input_cv = np.array(input_img)
+        # Generate Canny edges
+        edges_cv = cv2.Canny(input_cv, 100, 200)
+        # Convert back to a 3-channel PIL Image to be consistent with augmentations
+        canny_img = Image.fromarray(edges_cv).convert("RGB")
+
+        # --- Step 3: Apply Augmentations (if enabled) ---
+        if self.use_augmentation:
+            if random.random() > 0.5:
+                canny_img = F.hflip(canny_img)
+                output_img = F.hflip(output_img)
+            angle = transforms.RandomRotation.get_params([-10, 10])
+            canny_img = F.rotate(canny_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
+            output_img = F.rotate(output_img, angle, interpolation=transforms.InterpolationMode.BICUBIC)
+
+        # --- Step 4: Resize and Convert to Tensors ---
+        canny_img = self.resize_transform(canny_img)
         output_img = self.resize_transform(output_img)
-        if self.edge_folder:
-            edge_img = self.resize_transform(edge_img)
 
-        # --- Step 4: Prepare the 4-channel input tensor ---
-        input_t = F.to_tensor(input_img)
-        
-        if self.edge_folder:
-            edge_t = F.to_tensor(edge_img)
-            conditioning_pixel_values = torch.cat([input_t, edge_t], dim=0)
-        else: # For testing, pad with an empty channel
-            empty_channel = torch.zeros(1, 512, 512)
-            conditioning_pixel_values = torch.cat([input_t, empty_channel], dim=0)
+        # The conditioning image is now the Canny edge map
+        conditioning_pixel_values = F.to_tensor(canny_img)
 
-        # --- Step 5: Process the output image ---
         output_t = F.to_tensor(output_img)
         output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
 
-        # --- Step 6: Tokenize the caption ---
+        # --- Step 5: Tokenize Caption ---
         input_ids = self.tokenizer(
             caption, max_length=self.tokenizer.model_max_length,
             padding="max_length", truncation=True, return_tensors="pt"
