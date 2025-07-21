@@ -261,7 +261,15 @@ class PairedDataset(torch.utils.data.Dataset):
         edge_img = None
         if self.edge_folder:
             edge_img = Image.open(os.path.join(self.edge_folder, img_name)).convert("L")
-
+            
+        if self.use_augmentation and self.edge_folder:
+    
+    # --- NEW: GUIDANCE DROPOUT ---
+    # Randomly "drop" the edge map 25% of the time to make the model more robust
+            if random.random() < 0.25:
+        # Replace the real edge map with an empty black image
+                edge_img = Image.new('L', edge_img.size, 0)
+    
         # --- Step 3: Apply the SAME resize transform to all images ---
         input_img = self.resize_transform(input_img)
         output_img = self.resize_transform(output_img)

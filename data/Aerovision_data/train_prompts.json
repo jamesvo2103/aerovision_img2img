@@ -116,5 +116,8 @@
 "114.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a NERL-S809 airfoil at a high 35-degree angle of attack",
 "115.png" : "Low density, Smooth, attached laminar airflow over a SD7007 airfoil at 0 degrees angle of attack",
 "116.png" : "Low density, Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a SD7007 airfoil at a high 17.5-degree angle of attack",
-"117.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a SD7007 airfoil at a high 35-degree angle of attack"
+"117.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a SD7007 airfoil at a high 35-degree angle of attack",
+"118.png" : "Low density, Smooth, attached laminar airflow over a RAE2282 airfoil at 0 degrees angle of attack",
+"119.png" : "Low density, Airflow visualization showing significant flow separation near the leading edge, creating a turbulent wake over the top surface of a RAE2282 airfoil at a high 17.5-degree angle of attack",
+"120.png" : "Low density, Deep aerodynamic stall showing chaotic, fully separated flow and a large turbulent wake over a RAE2282 airfoil at a high 35-degree angle of attack"
 }
