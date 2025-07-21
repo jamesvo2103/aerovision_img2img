@@ -84,6 +84,7 @@ if __name__ == "__main__":
           output_image = model(c_t, args.prompt)
 
     # --- COMPOSITING STEP ---
+    flow_only_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
     # This part correctly merges the generated flow onto the original input
     input_cv = cv2.imread(args.input_image)
     flow_cv = cv2.cvtColor(np.array(flow_only_pil), cv2.COLOR_RGB2BGR)
