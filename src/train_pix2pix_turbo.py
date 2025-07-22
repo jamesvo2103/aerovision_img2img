@@ -205,6 +205,7 @@ def main(args):
                     Generator loss: fool the discriminator
                     """
                     # We use x_tgt_pred from the previous forward pass
+                    x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
                     lossG = net_disc(x_tgt_pred, for_G=True).mean() * args.lambda_gan
                     accelerator.backward(lossG)
                     if accelerator.sync_gradients:
