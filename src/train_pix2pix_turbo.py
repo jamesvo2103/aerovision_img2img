@@ -198,34 +198,34 @@ def main(args):
                 """
                 Generator loss: fool the discriminator
                 """
-                x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
-                lossG = net_disc(x_tgt_pred, for_G=True).mean() * args.lambda_gan
-                accelerator.backward(lossG)
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(layers_to_opt, args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                # x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
+                # lossG = net_disc(x_tgt_pred, for_G=True).mean() * args.lambda_gan
+                # accelerator.backward(lossG)
+                # if accelerator.sync_gradients:
+                #     accelerator.clip_grad_norm_(layers_to_opt, args.max_grad_norm)
+                # optimizer.step()
+                # lr_scheduler.step()
+                # optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
                 """
                 Discriminator loss: fake image vs real image
                 """
-                # real image
-                lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * args.lambda_gan
-                accelerator.backward(lossD_real.mean())
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
-                optimizer_disc.step()
-                lr_scheduler_disc.step()
-                optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
-                # fake image
-                lossD_fake = net_disc(x_tgt_pred.detach(), for_real=False).mean() * args.lambda_gan
-                accelerator.backward(lossD_fake.mean())
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
-                optimizer_disc.step()
-                optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
-                lossD = lossD_real + lossD_fake
+                # # real image
+                # lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * args.lambda_gan
+                # accelerator.backward(lossD_real.mean())
+                # if accelerator.sync_gradients:
+                #     accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
+                # optimizer_disc.step()
+                # lr_scheduler_disc.step()
+                # optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
+                # # fake image
+                # lossD_fake = net_disc(x_tgt_pred.detach(), for_real=False).mean() * args.lambda_gan
+                # accelerator.backward(lossD_fake.mean())
+                # if accelerator.sync_gradients:
+                #     accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
+                # optimizer_disc.step()
+                # optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
+                # lossD = lossD_real + lossD_fake
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
