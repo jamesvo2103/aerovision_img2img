@@ -97,8 +97,8 @@ if __name__ == "__main__":
 
     # 2. Define the "flow zone" by expanding (dilating) the airfoil shape
     # You can make the kernel larger (e.g., (15,15)) to expand the zone further
-    kernel = np.ones((5, 5), np.uint8)
-    dilated_mask = cv2.dilate(airfoil_mask, kernel, iterations=5)
+    kernel = np.ones((15, 15), np.uint8)
+    dilated_mask = cv2.dilate(airfoil_mask, kernel, iterations=20)
     # The flow zone is the area in the dilated mask that is NOT the airfoil itself
     flow_zone_mask = cv2.subtract(dilated_mask, airfoil_mask)
 
