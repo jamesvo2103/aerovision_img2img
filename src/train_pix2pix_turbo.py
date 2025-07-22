@@ -235,8 +235,8 @@ def main(args):
                 if accelerator.is_main_process:
                     logs = {}
                     # log all the losses
-                    logs["lossG"] = lossG.detach().item()
-                    logs["lossD"] = lossD.detach().item()
+                    #logs["lossG"] = lossG.detach().item()
+                    #logs["lossD"] = lossD.detach().item()
                     logs["loss_l2"] = loss_l2.detach().item()
                     logs["loss_lpips"] = loss_lpips.detach().item()
                     if args.lambda_clipsim > 0:
