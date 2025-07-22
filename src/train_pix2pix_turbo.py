@@ -174,6 +174,7 @@ def main(args):
     # Initialize loss tensors for logging
     lossG = torch.tensor(0.0)
     lossD = torch.tensor(0.0)
+    
 
     for epoch in range(0, args.num_training_epochs):
         for step, batch in enumerate(dl_train):
