@@ -260,10 +260,10 @@ class PairedDataset(torch.utils.data.Dataset):
         input_cv = np.array(input_img)
         # Generate Canny edges
         edges_cv = cv2.Canny(input_cv, 100, 200)
-        # Convert back to a 3-channel PIL Image to be consistent with augmentations
+       
         canny_img = Image.fromarray(edges_cv).convert("RGB")
 
-        # --- Step 4: Resize and Convert to Tensors ---
+        # --- Step 3: Resize and Convert to Tensors ---
         canny_img = self.resize_transform(canny_img)
         output_img = self.resize_transform(output_img)
 
