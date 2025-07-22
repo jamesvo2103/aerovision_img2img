@@ -74,7 +74,7 @@ def parse_args_paired_training(input_args=None):
         ),
     )
     # ... (rest of the file remains exactly the same) ...
-    parser.add_argument("--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler.")
+    parser.add_argument("--gan_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler.")
     parser.add_argument("--lr_num_cycles", type=int, default=1,
         help="Number of hard resets of the lr in cosine_with_restarts scheduler.",
     )
