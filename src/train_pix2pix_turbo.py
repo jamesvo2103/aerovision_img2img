@@ -99,7 +99,7 @@ def main(args):
         betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,)
     lr_scheduler = get_scheduler(args.lr_scheduler, optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_warmup_steps=args.gan_warmup_steps * accelerator.num_processes,
         num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles, power=args.lr_power,)
 
@@ -108,7 +108,7 @@ def main(args):
     betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay,
     eps=args.adam_epsilon,)
     lr_scheduler_disc = get_scheduler(args.lr_scheduler, optimizer=optimizer_disc,
-            num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+            num_warmup_steps=args.gan_warmup_steps * accelerator.num_processes,
             num_training_steps=args.max_train_steps * accelerator.num_processes,
             num_cycles=args.lr_num_cycles, power=args.lr_power)
 
