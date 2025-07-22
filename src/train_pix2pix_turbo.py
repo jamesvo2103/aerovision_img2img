@@ -163,7 +163,6 @@ def main(args):
                 shuffle=False, seed=0, batch_size=8, device=torch.device("cuda"),
                 mode="clean", custom_image_tranform=fn_transform, description="", verbose=True)
 
-    # start the training loop
     global_step = 0
     # --- Initialize these before the loop ---
     lossG = torch.tensor(0.0)
@@ -171,87 +170,70 @@ def main(args):
 
     for epoch in range(0, args.num_training_epochs):
         for step, batch in enumerate(dl_train):
-            l_acc = [net_pix2pix, net_disc]
-            with accelerator.accumulate(*l_acc):
+            with accelerator.accumulate(net_pix2pix, net_disc):
+                # =================================================================================
+                #                                 Generator Update
+                # =================================================================================
                 x_src = batch["conditioning_pixel_values"]
                 x_tgt = batch["output_pixel_values"]
-                B, C, H, W = x_src.shape
-                # forward pass
-                x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
 
+                # --- 1. Calculate the dynamic GAN weight (annealing) ---
+                current_lambda_gan = args.lambda_gan * min(1.0, global_step / args.gan_warmup_steps)
+
+                # --- 2. Calculate combined generator loss ---
+                x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
+                
                 mask = (x_tgt > -1.0).float()
-                # Reconstruction loss
-                loss_l2 = F.mse_loss(x_tgt_pred * mask, x_tgt.float() * mask, reduction="mean") * args.lambda_l2
+                loss_l2 = F.mse_loss(x_tgt_pred * mask, x_tgt.float() * mask) * args.lambda_l2
                 loss_lpips = net_lpips(x_tgt_pred * mask, x_tgt.float() * mask).mean() * args.lambda_lpips
-                loss = loss_l2 + loss_lpips
-                # CLIP similarity loss
-                if args.lambda_clipsim > 0:
-                    x_tgt_pred_renorm = t_clip_renorm(x_tgt_pred * 0.5 + 0.5)
-                    x_tgt_pred_renorm = F.interpolate(x_tgt_pred_renorm, (224, 224), mode="bilinear", align_corners=False)
-                    caption_tokens = clip.tokenize(batch["caption"], truncate=True).to(x_tgt_pred.device)
-                    clipsim, _ = net_clip(x_tgt_pred_renorm, caption_tokens)
-                    loss_clipsim = (1 - clipsim.mean() / 100)
-                    loss += loss_clipsim * args.lambda_clipsim
-                accelerator.backward(loss, retain_graph=False)
+                
+                # Add the adversarial loss using the DYNAMIC lambda
+                lossG = net_disc(x_tgt_pred, for_G=True).mean() * current_lambda_gan
+                total_gen_loss = loss_l2 + loss_lpips + lossG
+                
+                # --- 3. Perform a single update for the Generator ---
+                accelerator.backward(total_gen_loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(layers_to_opt, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
-                # --- NEW: ACTIVATE GAN AFTER WARMUP ---
-                if global_step > args.gan_warmup_steps:
-                    """
-                    Generator loss: fool the discriminator
-                    """
-                    # We use x_tgt_pred from the previous forward pass
-                    x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
-                    lossG = net_disc(x_tgt_pred, for_G=True).mean() * args.lambda_gan
-                    accelerator.backward(lossG)
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(layers_to_opt, args.max_grad_norm)
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
-
-                    """
-                    Discriminator loss: fake image vs real image
-                    """
+                # =================================================================================
+                #                                 Discriminator Update
+                # =================================================================================
+                # The discriminator only trains when its influence is > 0
+                if current_lambda_gan > 0:
                     # real image
-                    lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * args.lambda_gan
-                    accelerator.backward(lossD_real.mean())
+                    lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * current_lambda_gan
+                    accelerator.backward(lossD_real)
                     if accelerator.sync_gradients:
                         accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
                     optimizer_disc.step()
                     lr_scheduler_disc.step()
                     optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
-                    # fake image
-                    lossD_fake = net_disc(x_tgt_pred.detach(), for_real=False).mean() * args.lambda_gan
-                    accelerator.backward(lossD_fake.mean())
+                    
+                    # fake image (we detach to prevent gradients flowing back to the generator again)
+                    lossD_fake = net_disc(x_tgt_pred.detach(), for_real=False).mean() * current_lambda_gan
+                    accelerator.backward(lossD_fake)
                     if accelerator.sync_gradients:
                         accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
                     optimizer_disc.step()
                     optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
                     lossD = lossD_real + lossD_fake
-
-            # Checks if the accelerator has performed an optimization step behind the scenes
+            
+            # Logging and checkpointing logic
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-
+                
                 if accelerator.is_main_process:
                     logs = {}
-                    # log all the losses
-                    # --- NEW: Check if GAN is active before logging ---
-                    if global_step > args.gan_warmup_steps:
-                        logs["lossG"] = lossG.detach().item()
-                        logs["lossD"] = lossD.detach().item()
-                    
+                    logs["lossG"] = lossG.detach().item()
+                    logs["lossD"] = lossD.detach().item()
                     logs["loss_l2"] = loss_l2.detach().item()
                     logs["loss_lpips"] = loss_lpips.detach().item()
-                    if args.lambda_clipsim > 0:
-                        logs["loss_clipsim"] = loss_clipsim.detach().item()
-                    progress_bar.set_postfix(**logs)
+                    # ... (rest of your logging, viz, and checkpointing code) ..
                     # viz some images
                     if global_step % args.viz_freq == 1:
                         log_dict = {
