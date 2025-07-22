@@ -163,19 +163,29 @@ def main(args):
                 shuffle=False, seed=0, batch_size=8, device=torch.device("cuda"),
                 mode="clean", custom_image_tranform=fn_transform, description="", verbose=True)
 
+    # start the training loop
     global_step = 0
     # --- Initialize these before the loop ---
     lossG = torch.tensor(0.0)
     lossD = torch.tensor(0.0)
 
+    global_step = 0
+    best_val_loss = float("inf")
+    # Initialize loss tensors for logging
+    lossG = torch.tensor(0.0)
+    lossD = torch.tensor(0.0)
+
     for epoch in range(0, args.num_training_epochs):
         for step, batch in enumerate(dl_train):
+            # --- Define variables in the correct scope ---
+            x_src = batch["conditioning_pixel_values"]
+            x_tgt = batch["output_pixel_values"]
+            B, C, H, W = x_src.shape
+
             with accelerator.accumulate(net_pix2pix, net_disc):
                 # =================================================================================
                 #                                 Generator Update
                 # =================================================================================
-                x_src = batch["conditioning_pixel_values"]
-                x_tgt = batch["output_pixel_values"]
 
                 # --- 1. Calculate the dynamic GAN weight (annealing) ---
                 current_lambda_gan = args.lambda_gan * min(1.0, global_step / args.gan_warmup_steps)
@@ -189,6 +199,8 @@ def main(args):
                 
                 # Add the adversarial loss using the DYNAMIC lambda
                 lossG = net_disc(x_tgt_pred, for_G=True).mean() * current_lambda_gan
+                
+                # Combine all losses for the generator
                 total_gen_loss = loss_l2 + loss_lpips + lossG
                 
                 # --- 3. Perform a single update for the Generator ---
@@ -202,7 +214,6 @@ def main(args):
                 # =================================================================================
                 #                                 Discriminator Update
                 # =================================================================================
-                # The discriminator only trains when its influence is > 0
                 if current_lambda_gan > 0:
                     # real image
                     lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * current_lambda_gan
@@ -222,18 +233,24 @@ def main(args):
                     optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
                     lossD = lossD_real + lossD_fake
             
-            # Logging and checkpointing logic
+            # Logging, checkpointing, and validation
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                
+
                 if accelerator.is_main_process:
                     logs = {}
-                    logs["lossG"] = lossG.detach().item()
-                    logs["lossD"] = lossD.detach().item()
+                    # log all the losses
+                    # --- NEW: Check if GAN is active before logging ---
+                    if global_step > args.gan_warmup_steps:
+                        logs["lossG"] = lossG.detach().item()
+                        logs["lossD"] = lossD.detach().item()
+                    
                     logs["loss_l2"] = loss_l2.detach().item()
                     logs["loss_lpips"] = loss_lpips.detach().item()
-                    # ... (rest of your logging, viz, and checkpointing code) ..
+                    if args.lambda_clipsim > 0:
+                        logs["loss_clipsim"] = loss_clipsim.detach().item()
+                    progress_bar.set_postfix(**logs)
                     # viz some images
                     if global_step % args.viz_freq == 1:
                         log_dict = {
