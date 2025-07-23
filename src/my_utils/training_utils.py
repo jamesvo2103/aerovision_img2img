@@ -304,6 +304,7 @@ class PairedDataset(torch.utils.data.Dataset):
         return {
             "output_pixel_values": output_t,
             "conditioning_pixel_values": conditioning_pixel_values,
+            "airfoil_mask": airfoil_mask_t,
             "caption": caption,
             "input_ids": input_ids[0],
         }
