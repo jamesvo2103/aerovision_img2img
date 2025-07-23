@@ -49,10 +49,15 @@ def main(args):
     if args.pretrained_model_name_or_path == "stabilityai/sd-turbo":
         net_pix2pix = Pix2Pix_Turbo(lora_rank_unet=args.lora_rank_unet, lora_rank_vae=args.lora_rank_vae)
         net_pix2pix.set_train()
+
     if args.resume_from_checkpoint is not None:
         print(f"Loading weights from checkpoint: {args.resume_from_checkpoint}")
-        net_pix2pix.load_model(args.resume_from_checkpoint)
+        # Load the state dictionary from the .pkl file
+        state_dict = torch.load(args.resume_from_checkpoint, map_location="cpu")
+        # Load the weights into the model
+        net_pix2pix.load_state_dict(state_dict)
         print("Weights loaded successfully.")
+
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             net_pix2pix.unet.enable_xformers_memory_efficient_attention()
