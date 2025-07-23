@@ -185,12 +185,21 @@ def main(args):
                 # =================================================================================
 
                 # --- 1. Cosine Annealing for GAN weight ---
-                if global_step < args.gan_warmup_steps:
-                    progress = global_step / args.gan_warmup_steps
-                    cosine_val = 0.5 * (1.0 - math.cos(math.pi * progress))
-                    current_lambda_gan = args.lambda_gan * cosine_val
+                gan_weight = 0.0
+                warmup_end_step = args.gan_initial_warmup_steps
+                rampup_end_step = args.gan_initial_warmup_steps + args.gan_ramp_up_steps
+                if global_step > rampup_end_step:
+    # After ramp-up, use full weight
+                    gan_weight = 1.0
+                elif global_step > warmup_end_step:
+    # During ramp-up, linearly increase weight from 0 to 1
+                    progress = (global_step - warmup_end_step) / float(args.gan_ramp_up_steps)
+                    gan_weight = progress
                 else:
-                    current_lambda_gan = args.lambda_gan
+    # During initial warm-up, weight is 0
+                    gan_weight = 0.0
+
+                current_lambda_gan = args.lambda_gan * gan_weight
 
                 # --- 2. Calculate combined generator loss ---
                 x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
@@ -231,7 +240,7 @@ def main(args):
                     optimizer_disc.step()
                     lr_scheduler_disc.step()
                     optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
-                    
+    
                     lossD_fake = net_disc(x_tgt_pred.detach(), for_real=False).mean() * current_lambda_gan
                     accelerator.backward(lossD_fake)
                     if accelerator.sync_gradients:
