@@ -216,9 +216,9 @@ def main(args):
                         print("🚀 GAN activated. Resetting optimizers for stability.")
                         # Re-create fresh optimizers and schedulers
                         optimizer = torch.optim.AdamW(layers_to_opt, lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay, eps=args.adam_epsilon)
-                        lr_scheduler = get_scheduler(args.lr_scheduler, optimizer=optimizer, num_warmup_steps=args.lr_warmup_steps, num_training_steps=args.max_train_steps)
+                        lr_scheduler = get_scheduler(args.lr_scheduler, optimizer=optimizer, num_warmup_steps=args.gan_warmup_steps, num_training_steps=args.max_train_steps)
                         optimizer_disc = torch.optim.AdamW(net_disc.parameters(), lr=args.disc_learning_rate, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay, eps=args.adam_epsilon)
-                        lr_scheduler_disc = get_scheduler(args.lr_scheduler, optimizer=optimizer_disc, num_warmup_steps=args.lr_warmup_steps, num_training_steps=args.max_train_steps)
+                        lr_scheduler_disc = get_scheduler(args.lr_scheduler, optimizer=optimizer_disc, num_warmup_steps=args.gan_warmup_steps, num_training_steps=args.max_train_steps)
                         # Prepare them with accelerate
                         optimizer, lr_scheduler, optimizer_disc, lr_scheduler_disc = accelerator.prepare(optimizer, lr_scheduler, optimizer_disc, lr_scheduler_disc)
 
