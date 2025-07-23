@@ -52,12 +52,29 @@ def main(args):
 
     if args.resume_from_checkpoint is not None:
         print(f"Loading weights from checkpoint: {args.resume_from_checkpoint}")
-        # Load the state dictionary from the .pkl file
-        state_dict = torch.load(args.resume_from_checkpoint, map_location="cpu")
-        # Load the weights into the model
-        net_pix2pix.load_state_dict(state_dict)
-        print("Weights loaded successfully.")
-
+    
+    # Load the custom checkpoint dictionary
+        checkpoint = torch.load(args.resume_from_checkpoint, map_location="cpu")
+    
+    # Create a new, empty dictionary to hold the correctly formatted weights
+        reconstructed_state_dict = {}
+    
+    # Re-prefix the keys from the saved UNet state dict
+        if "state_dict_unet" in checkpoint:
+            for key, value in checkpoint["state_dict_unet"].items():
+                reconstructed_state_dict[f"unet.{key}"] = value
+    
+    # Re-prefix the keys from the saved VAE state dict
+        if "state_dict_vae" in checkpoint:
+            for key, value in checkpoint["state_dict_vae"].items():
+                reconstructed_state_dict[f"vae.{key}"] = value
+    
+    # Load the weights. `strict=False` is crucial because the checkpoint
+    # only contains the trained LoRA layers. The base model weights are
+    # already loaded, and we are just loading our fine-tuned changes on top.
+        net_pix2pix.load_state_dict(reconstructed_state_dict, strict=False)
+    
+    print("Weights successfully loaded from checkpoint.")
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             net_pix2pix.unet.enable_xformers_memory_efficient_attention()
