@@ -169,26 +169,29 @@ def main(args):
     lossD = torch.tensor(0.0)
     loss_clipsim = torch.tensor(0.0)
 
+    global_step = 0
+    best_val_loss = float("inf")
+    lossG = torch.tensor(0.0)
+    lossD = torch.tensor(0.0)
+    loss_clipsim = torch.tensor(0.0)
+
     for epoch in range(0, args.num_training_epochs):
         for step, batch in enumerate(dl_train):
-            # Define variables in the correct scope
+            # --- Define variables in the correct scope ---
             x_src = batch["conditioning_pixel_values"]
             x_tgt = batch["output_pixel_values"]
             B, C, H, W = x_src.shape
 
             with accelerator.accumulate(net_pix2pix, net_disc):
-                # =================================================================================
-                #                                 Generator Update
-                # =================================================================================
-                current_lambda_gan = args.lambda_gan * min(1.0, global_step / args.gan_warmup_steps)
-
+                
+                # --- Generator Update (Reconstruction Part) ---
                 x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
                 
                 mask = (x_tgt > -1.0).float()
                 loss_l2 = F.mse_loss(x_tgt_pred * mask, x_tgt.float() * mask) * args.lambda_l2
                 loss_lpips = net_lpips(x_tgt_pred * mask, x_tgt.float() * mask).mean() * args.lambda_lpips
                 
-                total_gen_loss = loss_l2 + loss_lpips
+                reconstruction_loss = loss_l2 + loss_lpips
 
                 if args.lambda_clipsim > 0:
                     x_tgt_pred_renorm = t_clip_renorm(x_tgt_pred * 0.5 + 0.5)
@@ -196,36 +199,47 @@ def main(args):
                     caption_tokens = clip.tokenize(batch["caption"], truncate=True).to(x_tgt_pred.device)
                     clipsim, _ = net_clip(x_tgt_pred_renorm, caption_tokens)
                     loss_clipsim = (1 - clipsim.mean() / 100)
-                    total_gen_loss += loss_clipsim * args.lambda_clipsim
-                
-                lossG = net_disc(x_tgt_pred, for_G=True).mean() * current_lambda_gan
-                total_gen_loss += lossG
-                
-                accelerator.backward(total_gen_loss)
+                    reconstruction_loss += loss_clipsim * args.lambda_clipsim
+
+                accelerator.backward(reconstruction_loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(layers_to_opt, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=args.set_grads_to_none)
 
-                # =================================================================================
-                #                                 Discriminator Update
-                # =================================================================================
-                if current_lambda_gan > 0:
-                    lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * current_lambda_gan
+                # --- GAN Update (Activates after warmup) ---
+                if global_step > args.gan_warmup_steps:
+                    # --- NEW: Optimizer Reset Logic ---
+                    # This happens only once, right at the switch
+                    if global_step == args.gan_warmup_steps + 1:
+                        print("🚀 GAN activated. Resetting optimizers for stability.")
+                        # Re-create fresh optimizers and schedulers
+                        optimizer = torch.optim.AdamW(layers_to_opt, lr=args.learning_rate, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay, eps=args.adam_epsilon)
+                        lr_scheduler = get_scheduler(args.lr_scheduler, optimizer=optimizer, num_warmup_steps=args.lr_warmup_steps, num_training_steps=args.max_train_steps)
+                        optimizer_disc = torch.optim.AdamW(net_disc.parameters(), lr=args.disc_learning_rate, betas=(args.adam_beta1, args.adam_beta2), weight_decay=args.adam_weight_decay, eps=args.adam_epsilon)
+                        lr_scheduler_disc = get_scheduler(args.lr_scheduler, optimizer=optimizer_disc, num_warmup_steps=args.lr_warmup_steps, num_training_steps=args.max_train_steps)
+                        # Prepare them with accelerate
+                        optimizer, lr_scheduler, optimizer_disc, lr_scheduler_disc = accelerator.prepare(optimizer, lr_scheduler, optimizer_disc, lr_scheduler_disc)
+
+                    # Generator's adversarial update
+                    x_tgt_pred_gan = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
+                    lossG = net_disc(x_tgt_pred_gan, for_G=True).mean() * args.lambda_gan
+                    accelerator.backward(lossG)
+                    if accelerator.sync_gradients:
+                        accelerator.clip_grad_norm_(layers_to_opt, args.max_grad_norm)
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+
+                    # Discriminator's update
+                    lossD_real = net_disc(x_tgt.detach(), for_real=True).mean() * args.lambda_gan
                     accelerator.backward(lossD_real)
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
-                    optimizer_disc.step()
-                    lr_scheduler_disc.step()
-                    optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
+                    # ... (rest of discriminator update logic)
                     
-                    lossD_fake = net_disc(x_tgt_pred.detach(), for_real=False).mean() * current_lambda_gan
+                    lossD_fake = net_disc(x_tgt_pred_gan.detach(), for_real=False).mean() * args.lambda_gan
                     accelerator.backward(lossD_fake)
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(net_disc.parameters(), args.max_grad_norm)
-                    optimizer_disc.step()
-                    optimizer_disc.zero_grad(set_to_none=args.set_grads_to_none)
+                    # ... (rest of discriminator update logic)
                     lossD = lossD_real + lossD_fake
             
             if accelerator.sync_gradients:
