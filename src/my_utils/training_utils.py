@@ -65,6 +65,8 @@ def parse_args_paired_training(input_args=None):
     
     
     # --- THIS IS THE CORRECT LOCATION FOR THE NEW ARGUMENT ---
+    parser.add_argument("--resume_from_checkpoint", type=str, default=None,
+                        help="Path to a checkpoint to resume training from.")
     parser.add_argument("--gan_warmup_steps", type=int, default=1000, 
                         help="Number of warmup steps for the learning rate scheduler (not the loss).")
     parser.add_argument("--gan_initial_warmup_steps", type=int, default=500, 
