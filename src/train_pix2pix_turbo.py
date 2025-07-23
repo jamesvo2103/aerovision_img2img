@@ -178,6 +178,7 @@ def main(args):
             x_src = batch["conditioning_pixel_values"]
             x_tgt = batch["output_pixel_values"]
             B, C, H, W = x_src.shape
+            airfoil_mask = batch["airfoil_mask"] 
 
             with accelerator.accumulate(net_pix2pix, net_disc):
                 # =================================================================================
@@ -204,9 +205,8 @@ def main(args):
                 # --- 2. Calculate combined generator loss ---
                 x_tgt_pred = net_pix2pix(x_src, prompt_tokens=batch["input_ids"], deterministic=True)
                 
-                mask = (x_tgt > -1.0).float()
-                loss_l2 = F.mse_loss(x_tgt_pred * mask, x_tgt.float() * mask) * args.lambda_l2
-                loss_lpips = net_lpips(x_tgt_pred * mask, x_tgt.float() * mask).mean() * args.lambda_lpips
+                loss_l2 = F.mse_loss(x_tgt_pred * airfoil_mask, x_tgt.float() * airfoil_mask) * args.lambda_l2
+                loss_lpips = net_lpips(x_tgt_pred * airfoil_mask, x_tgt.float() * airfoil_mask).mean() * args.lambda_lpips
                 
                 total_gen_loss = loss_l2 + loss_lpips
 

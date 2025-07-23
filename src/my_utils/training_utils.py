@@ -264,18 +264,36 @@ class PairedDataset(torch.utils.data.Dataset):
         input_cv = np.array(input_img)
         # Generate Canny edges
         edges_cv = cv2.Canny(input_cv, 100, 200)
-       
         canny_img = Image.fromarray(edges_cv).convert("RGB")
 
-        # --- Step 3: Resize and Convert to Tensors ---
+       # --- NEW: Step 3: Create a solid binary mask from the input airfoil image ---
+        # Convert to grayscale and then to numpy array
+        input_gray_cv = np.array(input_img.convert("L")) 
+        # Threshold the image. This assumes the airfoil is black (or dark gray) on a white background.
+        # Pixels with a value < 128 become 0 (airfoil), and others become 255 (background).
+        _, binary_mask_cv = cv2.threshold(input_gray_cv, 128, 255, cv2.THRESH_BINARY)
+        # Invert the mask so the airfoil is 0 and the airflow is 1 (or 255).
+        airfoil_mask_cv = cv2.bitwise_not(binary_mask_cv)
+        # Use a morphological closing operation to fill any small holes in the airfoil.
+        kernel = np.ones((5,5), np.uint8)
+        airfoil_mask_cv_solid = cv2.morphologyEx(airfoil_mask_cv, cv2.MORPH_CLOSE, kernel)
+        # Convert back to a PIL Image
+        airfoil_mask_pil = Image.fromarray(airfoil_mask_cv_solid).convert("L") # Use 'L' for single channel
+
+        # --- Step 4: Resize and Convert all images to Tensors ---
         canny_img = self.resize_transform(canny_img)
         output_img = self.resize_transform(output_img)
+        airfoil_mask_pil = self.resize_transform(airfoil_mask_pil) # Resize the mask as well
 
-        # The conditioning image is now the Canny edge map
+        # The conditioning image is the Canny edge map
         conditioning_pixel_values = F.to_tensor(canny_img)
-
+        
+        # Convert the output image and normalize
         output_t = F.to_tensor(output_img)
         output_t = F.normalize(output_t, mean=[0.5], std=[0.5])
+
+        # Convert the mask to a tensor. It will be [0, 1] so no normalization is needed.
+        airfoil_mask_t = F.to_tensor(airfoil_mask_pil)
 
         # --- Step 5: Tokenize Caption ---
         input_ids = self.tokenizer(
