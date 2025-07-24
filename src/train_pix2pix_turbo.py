@@ -24,7 +24,31 @@ from cleanfid.fid import get_folder_features, build_feature_extractor, fid_from_
 from pix2pix_turbo import Pix2Pix_Turbo
 from my_utils.training_utils import parse_args_paired_training, PairedDataset
 
+def sobel_filter(images):
+    """
+    Applies a Sobel filter to a batch of images to detect edges.
+    Args:
+        images (torch.Tensor): A batch of images of shape (B, C, H, W).
+    Returns:
+        torch.Tensor: The magnitude of the gradients.
+    """
+    # Convert to grayscale for gradient calculation
+    if images.shape[1] > 1:
+        images_gray = transforms.Grayscale()(images)
+    else:
+        images_gray = images
 
+    # Define Sobel filters
+    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32, device=images.device).view(1, 1, 3, 3)
+    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32, device=images.device).view(1, 1, 3, 3)
+
+    # Apply filters
+    grad_x = F.conv2d(images_gray, sobel_x, padding=1)
+    grad_y = F.conv2d(images_gray, sobel_y, padding=1)
+
+    # Calculate gradient magnitude
+    grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
+    return grad_magnitude
 def main(args):
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -236,6 +260,15 @@ def main(args):
                 
                 total_gen_loss = loss_l2 + loss_lpips
 
+                if args.lambda_gradient > 0:
+                    # Calculate gradients of the predicted and target images
+                    pred_grads = sobel_filter(x_tgt_pred)
+                    target_grads = sobel_filter(x_tgt)
+                    
+                    # Calculate the L1 loss between the gradients, applying the mask
+                    loss_gradient = F.l1_loss(pred_grads * airfoil_mask, target_grads * airfoil_mask) * args.lambda_gradient
+                    total_gen_loss += loss_gradient
+                    
                 if args.lambda_clipsim > 0:
                     x_tgt_pred_renorm = t_clip_renorm(x_tgt_pred * 0.5 + 0.5)
                     x_tgt_pred_renorm = F.interpolate(x_tgt_pred_renorm, (224, 224), mode="bilinear", align_corners=False)
